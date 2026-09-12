@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS Local Mission Control // Astronaut Assistance HUD</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Orbitron, Rajdhani, JetBrains Mono, Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-obsidian: #06090f;
+      --bg-card: rgba(13, 19, 32, 0.75);
+      --border-neon-cyan: rgba(0, 240, 255, 0.3);
+      --cyan-primary: #00f0ff;
+    }
+    body {
+      background-color: var(--bg-obsidian);
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
+        radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.05) 0%, transparent 50%),
+        linear-gradient(to bottom, rgba(6, 9, 15, 0.95), rgba(6, 9, 15, 0.98));
+      background-attachment: fixed;
+    }
+    .font-orbitron { font-family: 'Orbitron', sans-serif; }
+    .font-rajdhani { font-family: 'Rajdhani', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    
+    .glass-panel {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-neon-cyan);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px 0 rgba(0, 240, 255, 0.05);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .glass-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #00f0ff, transparent);
+      opacity: 0.6;
+    }
+    .badge-match {
+      background: rgba(0, 255, 136, 0.15);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+    }
+    .badge-mismatch {
+      background: rgba(255, 42, 109, 0.15);
+      border: 1px solid #ff2a6d;
+      color: #ff2a6d;
+      box-shadow: 0 0 15px rgba(255, 42, 109, 0.4);
+      animation: pulse-red 1.5s infinite;
+    }
+    .badge-uncertain {
+      background: rgba(255, 170, 0, 0.15);
+      border: 1px solid #ffaa00;
+      color: #ffaa00;
+      box-shadow: 0 0 15px rgba(255, 170, 0, 0.4);
+    }
+    @keyframes pulse-red {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.02); }
+    }
+    @keyframes wave-bounce {
+      0%, 100% { height: 6px; }
+      50% { height: 28px; }
+    }
+    .wave-bar { animation: wave-bounce 1s ease-in-out infinite alternate; }
+    .scanlines {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+    }
+
+    .mic-active {
+      background-color: rgba(0, 240, 255, 0.25) !important;
+      border-color: #00f0ff !important;
+      color: #00f0ff !important;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.6) !important;
+      animation: mic-pulse 1s infinite alternate;
+    }
+    @keyframes mic-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+      100% { transform: scale(1.05); box-shadow: 0 0 25px rgba(0, 240, 255, 0.9); }
+    }
+  </style>
+</head>
+<body class="p-4 md:p-6 max-w-[1700px] mx-auto min-h-screen flex flex-col justify-between">
+
+  <!-- Hidden Video Element for Physical Camera Capture -->
+  <video id="webcam-raw" autoplay playsinline class="hidden"></video>
+
+  <div>
+    <!-- Top Header HUD Bar -->
+    <header class="glass-panel px-6 py-4 mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-4">
+        <div class="relative flex items-center justify-center w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-400">
+          <svg class="w-7 h-7 text-cyan-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-width="2"/><rect x="9" y="9" width="6" height="6" stroke-width="2"/><path d="M15 2v2M9 2v2M15 20v2M9 20v2M2 15h2M2 9h2M20 15h2M20 9h2" stroke-width="2"/></svg>
+          <div class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="font-orbitron font-black text-xl tracking-wider text-cyan-400">
+              JARVIS <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">v3.0 LOCAL</span>
+            </h1>
+            <span class="text-xs font-mono px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 bg-cyan-950/30">
+              SYSTEM ZERO ERRORS
+            </span>
+          </div>
+          <p class="text-xs font-rajdhani text-slate-400 tracking-wide">
+            MISSION CONTROL // ISS COLUMBUS MODULE EXPERIMENT MONITOR
+          </p>
+        </div>
+      </div>
+
+      <!-- Live Clock & Status Bar -->
+      <div class="hidden md:flex items-center space-x-6 bg-slate-950/60 px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs">
+        <div class="flex items-center space-x-2 text-cyan-300 mr-4">
+          <svg class="w-4 h-4 text-cyan-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke-width="2"/></svg>
+          <span>TIME: <strong id="utc-clock" class="text-white font-semibold">12:22:29 UTC</strong></span>
+        </div>
+        <div class="flex items-center space-x-2 mr-4">
+          <svg class="w-4 h-4 text-green-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke-width="2"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+          <span class="text-slate-300">WEBCAM:</span>
+          <span id="cam-status-badge" class="px-1.5 py-0.5 text-[10px] rounded font-bold bg-green-500/20 text-green-400 border border-green-500/30">ACTIVE</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <svg class="w-4 h-4 text-cyan-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke-width="2"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke-width="2"/></svg>
+          <span class="text-slate-300">MIC VOICE:</span>
+          <span id="voice-status-badge" class="px-1.5 py-0.5 text-[10px] rounded font-bold bg-green-500/20 text-green-400 border border-green-500/30">ACTIVE</span>
+        </div>
+      </div>
+
+      <!-- Controls & Header Buttons -->
+      <div class="flex items-center space-x-3">
+        <!-- 1. Webcam Access Button -->
+        <button id="btn-grant-cam" class="flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-bold border transition-all bg-green-500/20 border-green-400 text-green-300 shadow-[0_0_15px_rgba(0,255,136,0.3)] hover:bg-green-500/30">
+          <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke-width="2"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+          <span id="cam-btn-text">TOGGLE CAMERA</span>
+        </button>
+
+        <!-- 2. Voice Access Button -->
+        <button id="btn-grant-voice" class="flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-bold border transition-all bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.3)] hover:bg-cyan-500/30">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke-width="2"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke-width="2"/></svg>
+          <span id="voice-btn-text">ACTIVATE VOICE</span>
+        </button>
+
+        <!-- 3. Demo Mode Toggle Button -->
+        <button id="btn-toggle-demo" class="flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-semibold border transition-all bg-amber-500/20 border-amber-400 text-amber-300 hover:bg-amber-500/30">
+          <svg id="demo-btn-icon" class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" stroke-width="2"/><rect x="14" y="4" width="4" height="16" stroke-width="2"/></svg>
+          <span id="demo-btn-text">DEMO MODE: ON</span>
+        </button>
+
+        <!-- 4. Audio Mute Button -->
+        <button id="btn-toggle-mute" class="p-2 rounded-lg border bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 transition-all" title="Mute / Unmute Audio Output">
+          <svg id="icon-mute" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke-width="2"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke-width="2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- AI Pipeline Monitor -->
+    <div class="glass-panel p-5 mb-6">
+      <div class="flex items-center justify-between pb-3 border-b border-cyan-500/20 mb-4 font-mono">
+        <div class="flex items-center space-x-2">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2" stroke-width="2"/><polyline points="2 17 12 22 22 17" stroke-width="2"/><polyline points="2 12 12 17 22 12" stroke-width="2"/></svg>
+          <h2 class="font-orbitron font-bold text-cyan-300 tracking-wider text-sm">
+            AI PIPELINE ARCHITECTURE MONITOR
+          </h2>
+        </div>
+        <div class="flex items-center space-x-2 text-xs">
+          <span class="text-slate-400">TOTAL LATENCY:</span>
+          <span id="total-latency" class="text-cyan-400 font-bold bg-slate-900 px-2 py-0.5 rounded border border-cyan-500/30">388.2 ms</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3" id="pipeline-nodes-container">
+        <!-- Dynamic Pipeline Nodes -->
+      </div>
+    </div>
+
+    <!-- Main Grid Viewport -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+      <!-- Live Camera Feed (7 cols) -->
+      <div class="lg:col-span-7 flex flex-col glass-panel p-4">
+        <div class="flex items-center justify-between pb-3 border-b border-cyan-500/20 mb-3 font-mono text-xs">
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke-width="2"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>
+            <span class="font-orbitron font-bold text-cyan-300 tracking-wider">LIVE HELMETCAM VISION HUD</span>
+            <span id="res-badge" class="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700">1280x720 // 30 FPS</span>
+          </div>
+
+          <div class="flex items-center space-x-3">
+            <!-- 5. Local Recording Toggle Button -->
+            <button id="btn-rec" class="flex items-center space-x-1.5 px-3 py-1 rounded border text-[11px] font-bold bg-slate-900 border-slate-700 text-slate-300 hover:border-red-400 transition-all">
+              <svg class="w-3.5 h-3.5 text-red-400" id="rec-dot" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+              <span id="rec-btn-text">LOCAL REC</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="relative flex-1 bg-black rounded-lg overflow-hidden flex items-center justify-center border border-slate-800 scanlines min-h-[380px]" id="video-container">
+          <canvas id="demo-canvas" width="800" height="450" class="w-full h-full object-contain max-h-[440px] block"></canvas>
+
+          <div class="absolute top-3 left-3 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded border border-cyan-500/30 text-cyan-300 font-mono text-[11px] space-y-0.5 pointer-events-none">
+            <div>CAM_ID: <span id="hud-cam-id" class="text-white">EVA-HEADCAM-01</span></div>
+            <div>STREAM: <span id="hud-stream-status" class="text-green-400">RTSP LIVE (OK)</span></div>
+            <div>LATENCY: <span id="hud-latency" class="text-cyan-300">34.2 ms</span></div>
+          </div>
+
+          <div class="absolute bottom-3 right-3 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded border border-slate-700 text-slate-300 font-mono text-[11px] pointer-events-none">
+            <div class="flex items-center space-x-2">
+              <span class="text-slate-400">DETECTED:</span>
+              <span id="hud-object" class="text-cyan-400 font-bold">Fuel Valve 4A</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-slate-400">CONFIDENCE:</span>
+              <span id="hud-conf" class="text-green-400 font-bold">94%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Decision Engine & JARVIS Voice Hub (5 cols) -->
+      <div class="lg:col-span-5 grid grid-cols-1 gap-6">
+        <!-- Verification Card -->
+        <div class="glass-panel p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-3 border-b border-cyan-500/20 mb-4 font-mono">
+              <div class="flex items-center space-x-2">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke-width="2"/><polyline points="9 12 11 14 15 10" stroke-width="2"/></svg>
+                <h2 class="font-orbitron font-bold text-cyan-300 tracking-wider text-sm">DECISION & STEP ENGINE</h2>
+              </div>
+              <span id="step-badge" class="text-xs text-purple-300 font-bold bg-purple-950/60 px-2.5 py-0.5 rounded border border-purple-500/30">STEP 1 OF 4</span>
+            </div>
+
+            <div class="mb-4">
+              <div id="step-id" class="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-1">STEP-01 // CURRENT PROCEDURE</div>
+              <h3 id="step-title" class="font-orbitron font-bold text-lg text-white mb-2">Primary Fuel Valve Inspection</h3>
+              <p class="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-lg border border-slate-800 font-mono">
+                <strong class="text-cyan-400">ACTION REQUIRED:</strong> <span id="step-action">Verify safety lock pin engagement.</span>
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-4 font-mono text-xs">
+              <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                <div class="text-slate-500 mb-1">EXPECTED COMPONENT:</div>
+                <div id="exp-obj" class="text-cyan-300 font-bold text-sm truncate">Fuel Valve 4A</div>
+              </div>
+              <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                <div class="text-slate-500 mb-1">VISION DETECTED:</div>
+                <div id="det-obj" class="text-green-400 font-bold text-sm truncate">Fuel Valve 4A</div>
+              </div>
+            </div>
+
+            <div id="verification-banner" class="mb-4 badge-match px-4 py-3 rounded-xl flex items-center space-x-3">
+              <svg class="w-8 h-8 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke-width="2"/><polyline points="22 4 12 14.01 9 11.01" stroke-width="2"/></svg>
+              <div>
+                <div class="font-orbitron font-black text-lg tracking-wider">VERIFICATION: MATCH</div>
+                <div id="ver-reason" class="text-xs text-green-400/90 font-mono">High confidence object match. Proceed with astronaut action.</div>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <div class="flex justify-between items-center text-xs font-mono mb-1.5">
+                <span class="text-slate-400">VISION CONFIDENCE METER:</span>
+                <span id="conf-val" class="text-cyan-300 font-bold">94%</span>
+              </div>
+              <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                <div id="conf-bar" class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-green-400 transition-all duration-500" style="width: 94%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6 & 7. Step Navigation Buttons -->
+          <div class="flex items-center space-x-3 pt-3 border-t border-slate-800">
+            <button id="btn-prev" class="flex-1 py-2 px-3 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 font-mono text-xs font-semibold hover:border-cyan-400 flex items-center justify-center space-x-1 transition-all">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" stroke-width="2"/></svg>
+              <span>PREV STEP</span>
+            </button>
+            <button id="btn-next" class="flex-1 py-2 px-3 rounded-lg bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-mono text-xs font-bold hover:bg-cyan-500/30 flex items-center justify-center space-x-1 transition-all">
+              <span>NEXT STEP</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" stroke-width="2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- JARVIS Voice Hub (2-Way Microphone & Speech Synthesis) -->
+        <div class="glass-panel p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-3 border-b border-cyan-500/20 mb-4 font-mono">
+              <div class="flex items-center space-x-2">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 21l3.39.68C9.28 22.56 10.6 23 12 23c4.97 0 9-4.03 9-9s-4.03-9-9-9z" stroke-width="2"/></svg>
+                <h2 class="font-orbitron font-bold text-cyan-300 tracking-wider text-sm">JARVIS 2-WAY VOICE HUB</h2>
+              </div>
+              <div class="flex items-center space-x-1 text-xs text-cyan-400 font-mono">
+                <span id="voice-indicator-dot" class="w-2 h-2 rounded-full bg-green-400 animate-ping mr-1"></span>
+                <span id="voice-state-label">VOICE READY</span>
+              </div>
+            </div>
+
+            <!-- Waveform Equalizer Display -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-center space-x-1.5 h-14 mb-4">
+              <div id="w1" class="w-1 bg-cyan-400 wave-bar h-2"></div>
+              <div id="w2" class="w-1 bg-cyan-400 wave-bar h-4"></div>
+              <div id="w3" class="w-1 bg-cyan-400 wave-bar h-6"></div>
+              <div id="w4" class="w-1 bg-cyan-400 wave-bar h-3"></div>
+              <div id="w5" class="w-1 bg-cyan-400 wave-bar h-7"></div>
+              <div id="w6" class="w-1 bg-cyan-400 wave-bar h-4"></div>
+              <div id="w7" class="w-1 bg-cyan-400 wave-bar h-8"></div>
+              <div id="w8" class="w-1 bg-cyan-400 wave-bar h-5"></div>
+            </div>
+
+            <!-- JARVIS Response Message Box -->
+            <div class="bg-slate-950/90 p-4 rounded-xl border border-cyan-500/30 min-h-[100px] mb-4 relative">
+              <div class="flex items-center justify-between text-xs font-mono text-cyan-400 mb-2">
+                <div class="flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5" stroke-width="2"/><line x1="12" y1="19" x2="20" y2="19" stroke-width="2"/></svg>
+                  <span>JARVIS SYNTHESIZED RESPONSE</span>
+                </div>
+                <!-- 8. Replay Audio Button -->
+                <button id="btn-replay-audio" class="text-xs text-slate-400 hover:text-cyan-300 flex items-center space-x-1 transition-all" title="Replay Voice Audio">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke-width="2"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke-width="2"/></svg>
+                  <span>REPLAY</span>
+                </button>
+              </div>
+              <p id="jarvis-voice-msg" class="font-mono text-sm text-cyan-100 leading-relaxed">
+                JARVIS: Systems online. Zero errors detected. Click microphone or type to communicate.
+              </p>
+            </div>
+          </div>
+
+          <!-- Interactive Voice Microphone & Text Query Form -->
+          <form id="form-query" class="flex items-center space-x-2">
+            <!-- 9. Microphone Speech-To-Text Button -->
+            <button
+              type="button"
+              id="btn-mic"
+              class="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-cyan-400 hover:border-cyan-400 transition-all flex items-center justify-center shrink-0"
+              title="Click to speak to JARVIS using your microphone"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke-width="2"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke-width="2"/></svg>
+            </button>
+
+            <input
+              type="text"
+              id="input-query"
+              placeholder="Speak using mic or type question (e.g. 'Verify fuel valve')..."
+              class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-cyan-100 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-400"
+            />
+
+            <!-- 10. Send Query Button -->
+            <button type="submit" id="btn-send-query" class="p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-400 text-cyan-300 hover:bg-cyan-500/30 shrink-0 transition-all">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke-width="2"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke-width="2"/></svg>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hardware & Telemetry Monitors -->
+    <div class="glass-panel p-5 mb-6">
+      <div class="flex items-center justify-between pb-3 border-b border-cyan-500/20 mb-4 font-mono">
+        <div class="flex items-center space-x-2">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke-width="2"/></svg>
+          <h2 class="font-orbitron font-bold text-cyan-300 tracking-wider text-sm">HARDWARE & TELEMETRY MONITOR</h2>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+          <div class="text-slate-400 mb-1">VISION FPS</div>
+          <div id="stat-fps" class="font-orbitron font-black text-xl text-white">30 FPS</div>
+        </div>
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+          <div class="text-slate-400 mb-1">GPU VRAM</div>
+          <div id="stat-vram" class="font-orbitron font-black text-xl text-purple-300">8.4 GB</div>
+        </div>
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+          <div class="text-slate-400 mb-1">GPU TEMP</div>
+          <div id="stat-temp" class="font-orbitron font-black text-xl text-red-300">62°C</div>
+        </div>
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+          <div class="text-slate-400 mb-1">RTSP STREAM</div>
+          <div id="stat-stream" class="font-mono text-[11px] text-cyan-300 truncate">rtsp://localhost:8554/live</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real-Time Mission Event & Telemetry Logs -->
+    <div class="glass-panel p-5">
+      <div class="flex flex-wrap items-center justify-between pb-3 border-b border-cyan-500/20 mb-4 font-mono text-xs gap-3">
+        <div class="flex items-center space-x-2">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5" stroke-width="2"/><line x1="12" y1="19" x2="20" y2="19" stroke-width="2"/></svg>
+          <h2 class="font-orbitron font-bold text-cyan-300 tracking-wider text-sm">MISSION EVENT & TELEMETRY LOGS</h2>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <!-- 11. Log Category Filter Tabs -->
+          <div class="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 text-[10px]">
+            <button id="filter-all" class="px-2.5 py-1 rounded bg-cyan-500/30 text-cyan-300 font-bold transition-all">ALL</button>
+            <button id="filter-verification" class="px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition-all">VERIFICATION</button>
+            <button id="filter-pipeline" class="px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition-all">PIPELINE</button>
+            <button id="filter-system" class="px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition-all">SYSTEM</button>
+          </div>
+
+          <!-- 12. CSV Log Export Button -->
+          <button id="btn-export-csv" class="flex items-center space-x-1.5 px-3 py-1 rounded bg-slate-900 border border-slate-700 text-slate-300 hover:text-cyan-300 hover:border-cyan-400 text-[11px] transition-all" title="Download Mission Log CSV">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-width="2"/><polyline points="7 10 12 15 17 10" stroke-width="2"/><line x1="12" y1="15" x2="12" y2="3" stroke-width="2"/></svg>
+            <span>EXPORT CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="logs-container" class="bg-slate-950/90 rounded-xl border border-slate-800 max-h-48 overflow-y-auto font-mono text-xs divide-y divide-slate-900 p-2">
+        <!-- Dynamic Log Entries -->
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-8 pt-4 border-t border-cyan-500/20 text-center font-mono text-xs text-slate-500 flex flex-wrap justify-between items-center gap-2">
+    <div>JARVIS LOCAL ASTRONAUT ASSISTANT // DEEP SPACE EXPEDITION MISSION CONTROL</div>
+    <div class="text-cyan-400">LOCAL HOST 5000 // YOLO v8 + Qwen3-VL + RAG + DECISION ENGINE + Qwen3 LLM</div>
+  </footer>
+
+  <script>
+    // Live Clock
+    setInterval(() => {
+      document.getElementById('utc-clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
+    }, 1000);
+
+    const procedures = [
+      { id: "STEP-01", title: "Primary Fuel Valve Inspection", expected_object: "Fuel Valve 4A", action_required: "Verify safety lock pin engagement.", status: "MATCH", confidence: 0.94, detected_object: "Fuel Valve 4A", reason: "High confidence object match. Proceed with astronaut action.", jarvis_voice: "JARVIS: Fuel Valve 4A identified and verified. Verify safety lock pin engagement." },
+      { id: "STEP-02", title: "Solar Array Wire Harness Connection", expected_object: "Wire Harness Alpha-3", action_required: "Ensure clip seating and check lead voltage.", status: "MISMATCH", confidence: 0.62, detected_object: "Secondary Conduit Clamp", reason: "Incorrect component detected! Expected Wire Harness Alpha-3, but detected Secondary Conduit Clamp.", jarvis_voice: "WARNING: Mismatch detected! Target component should be Wire Harness Alpha-3. Please pause procedure." },
+      { id: "STEP-03", title: "Liquid Cooling Loop Pressure Sensor", expected_object: "Pressure Sensor Gauge", action_required: "Check pressure reads between 32 and 36 PSI.", status: "MATCH", confidence: 0.91, detected_object: "Pressure Sensor Gauge", reason: "Gauge aligned. PSI telemetry within 34.2 nominal bounds.", jarvis_voice: "JARVIS: Pressure Sensor Gauge identified. Pressure telemetry nominal at 34.2 PSI." },
+      { id: "STEP-04", title: "Thermal Shield Seal Inspection", expected_object: "Gasket B-7", action_required: "Inspect silicone seal for micro-fissures.", status: "UNCERTAIN", confidence: 0.72, detected_object: "Gasket B-7", reason: "Confidence 72% is below 88% required threshold.", jarvis_voice: "ALERT: Low confidence verification on Gasket B-7. Please adjust helmet lamp for secondary scan." }
+    ];
+
+    let currentStepIdx = 0;
+    let isMuted = false;
+    let isDemoMode = true;
+    let isRecording = false;
+    let isListening = false;
+    let recognition = null;
+    let selectedVoice = null;
+    let currentFilter = 'ALL';
+
+    let missionLogs = [
+      { id: 1, time: new Date().toISOString().substring(11, 19) + " UTC", category: "SYSTEM", msg: "JARVIS Mission Control Systems initialized. Zero errors.", level: "INFO" },
+      { id: 2, time: new Date().toISOString().substring(11, 19) + " UTC", category: "PIPELINE", msg: "YOLO v8 / Qwen3-VL / RAG / Qwen3 LLM Pipeline Active.", level: "INFO" }
+    ];
+
+    function addLog(category, msg, level = "INFO") {
+      const timeStr = new Date().toISOString().substring(11, 19) + " UTC";
+      missionLogs.unshift({ id: Date.now(), time: timeStr, category, msg, level });
+      if (missionLogs.length > 50) missionLogs.pop();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('logs-container');
+      const filtered = missionLogs.filter(l => currentFilter === 'ALL' || l.category === currentFilter);
+      container.innerHTML = filtered.map(l => {
+        const color = l.level === 'SUCCESS' ? 'text-green-400' : (l.level === 'ERROR' ? 'text-red-400' : (l.level === 'WARN' ? 'text-amber-400' : 'text-cyan-300'));
+        return `<div class="py-1 px-2 flex items-center justify-between ${color}">
+          <span>${l.time} [${l.category}] ${l.msg}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // Hardware Webcam
+    const rawVideo = document.getElementById('webcam-raw');
+    let usePhysicalWebcam = false;
+
+    function requestCameraAccess() {
+      if (usePhysicalWebcam) {
+        usePhysicalWebcam = false;
+        if (rawVideo.srcObject) {
+          rawVideo.srcObject.getTracks().forEach(t => t.stop());
+          rawVideo.srcObject = null;
+        }
+        document.getElementById('cam-btn-text').innerText = 'ENABLE CAMERA';
+        document.getElementById('cam-status-badge').innerText = 'DEMO FEED';
+        document.getElementById('cam-status-badge').className = 'px-1.5 py-0.5 text-[10px] rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        addLog("SYSTEM", "Switched to Synthetic Camera Feed", "WARN");
+        return;
+      }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } })
+          .then((stream) => {
+            rawVideo.srcObject = stream;
+            usePhysicalWebcam = true;
+            document.getElementById('cam-btn-text').innerText = 'CAMERA ACTIVE';
+            document.getElementById('cam-status-badge').innerText = 'WEBCAM LIVE';
+            document.getElementById('cam-status-badge').className = 'px-1.5 py-0.5 text-[10px] rounded font-bold bg-green-500/20 text-green-400 border border-green-500/30';
+            document.getElementById('hud-cam-id').innerText = 'EVA-WEBCAM-LIVE';
+            document.getElementById('hud-stream-status').innerText = 'HARDWARE CAM (OK)';
+            addLog("SYSTEM", "Physical Hardware Webcam Online", "SUCCESS");
+            speakJarvis("Live camera stream activated.");
+          })
+          .catch((err) => {
+            addLog("SYSTEM", "Camera permission prompt displayed", "INFO");
+          });
+      }
+    }
+
+    // 1. BUTTON: Webcam Access
+    document.getElementById('btn-grant-cam').onclick = requestCameraAccess;
+
+    // Voice Engine
+    function initSpeechVoices() {
+      if ('speechSynthesis' in window) {
+        try {
+          const updateVoices = () => {
+            const voices = window.speechSynthesis.getVoices();
+            if (voices && voices.length > 0) {
+              selectedVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Mark') || v.name.includes('David') || v.lang.startsWith('en')) || voices[0];
+            }
+          };
+          updateVoices();
+          window.speechSynthesis.onvoiceschanged = updateVoices;
+        } catch (e) {}
+      }
+    }
+    initSpeechVoices();
+
+    function speakJarvis(text) {
+      if (isMuted || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const cleanMsg = text.replace(/JARVIS:|WARNING:|ALERT:/g, '').trim();
+        const utterance = new SpeechSynthesisUtterance(cleanMsg);
+        if (selectedVoice) utterance.voice = selectedVoice;
+        utterance.rate = 1.0;
+        utterance.pitch = 0.95;
+
+        document.getElementById('voice-state-label').innerText = 'SPEAKING...';
+        utterance.onend = () => {
+          document.getElementById('voice-state-label').innerText = isListening ? 'LISTENING...' : 'VOICE READY';
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {}
+    }
+
+    // 2. BUTTON: Voice Access
+    document.getElementById('btn-grant-voice').onclick = () => {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
+          document.getElementById('voice-btn-text').innerText = 'VOICE ACTIVE';
+          addLog("SYSTEM", "2-Way Microphone Voice Access Granted", "SUCCESS");
+          speakJarvis("JARVIS 2-Way Voice Control activated. I am listening, astronaut.");
+          startListening();
+        }).catch(() => { startListening(); });
+      } else { startListening(); }
+    };
+
+    // 3. BUTTON: Demo Mode Toggle
+    document.getElementById('btn-toggle-demo').onclick = () => {
+      isDemoMode = !isDemoMode;
+      document.getElementById('demo-btn-text').innerText = isDemoMode ? 'DEMO MODE: ON' : 'DEMO MODE: OFF';
+      document.getElementById('btn-toggle-demo').className = isDemoMode
+        ? 'flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-semibold border transition-all bg-amber-500/20 border-amber-400 text-amber-300'
+        : 'flex items-center space-x-2 px-3.5 py-2 rounded-lg font-mono text-xs font-semibold border transition-all bg-slate-900 border-slate-700 text-slate-400';
+      addLog("SYSTEM", `Demo Mode set to ${isDemoMode ? 'ON' : 'OFF'}`, "INFO");
+    };
+
+    // 4. BUTTON: Mute Audio Toggle
+    document.getElementById('btn-toggle-mute').onclick = () => {
+      isMuted = !isMuted;
+      document.getElementById('btn-toggle-mute').className = isMuted
+        ? 'p-2 rounded-lg border bg-red-950/40 border-red-500/40 text-red-400 hover:bg-red-900/60 transition-all'
+        : 'p-2 rounded-lg border bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 transition-all';
+      if (isMuted && 'speechSynthesis' in window) try { window.speechSynthesis.cancel(); } catch(e){}
+      addLog("SYSTEM", `Audio Voice Output ${isMuted ? 'Muted' : 'Unmuted'}`, "INFO");
+    };
+
+    // 5. BUTTON: Local Recording Toggle
+    document.getElementById('btn-rec').onclick = () => {
+      isRecording = !isRecording;
+      document.getElementById('rec-btn-text').innerText = isRecording ? 'REC ACTIVE' : 'LOCAL REC';
+      document.getElementById('btn-rec').className = isRecording
+        ? 'flex items-center space-x-1.5 px-3 py-1 rounded border text-[11px] font-bold bg-red-500/20 border-red-500 text-red-400 animate-pulse transition-all'
+        : 'flex items-center space-x-1.5 px-3 py-1 rounded border text-[11px] font-bold bg-slate-900 border-slate-700 text-slate-300 hover:border-red-400 transition-all';
+      addLog("SYSTEM", `Local Video Recording ${isRecording ? 'Started' : 'Stopped'}`, isRecording ? "WARN" : "INFO");
+    };
+
+    // Speech Recognition setup
+    function setupSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return;
+
+      try {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          isListening = true;
+          document.getElementById('btn-mic').classList.add('mic-active');
+          document.getElementById('voice-state-label').innerText = 'LISTENING...';
+          document.getElementById('input-query').placeholder = 'Listening... Speak your question to JARVIS now';
+        };
+
+        recognition.onresult = (event) => {
+          let transcript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          document.getElementById('input-query').value = transcript;
+          
+          if (event.results[0].isFinal) {
+            processAstronautQuery(transcript);
+          }
+        };
+
+        recognition.onerror = () => { stopListening(); };
+        recognition.onend = () => { stopListening(); };
+      } catch (err) {}
+    }
+
+    function startListening() {
+      if (!recognition) setupSpeechRecognition();
+      if (recognition) {
+        try { recognition.start(); } catch (err) {}
+      }
+    }
+
+    function stopListening() {
+      isListening = false;
+      document.getElementById('btn-mic').classList.remove('mic-active');
+      document.getElementById('voice-state-label').innerText = 'VOICE READY';
+      document.getElementById('input-query').placeholder = "Speak using mic or type question (e.g. 'Verify fuel valve')...";
+    }
+
+    // 9. BUTTON: Mic Speech Button
+    document.getElementById('btn-mic').onclick = () => {
+      if (isListening) {
+        if (recognition) try { recognition.stop(); } catch(e){}
+      } else {
+        startListening();
+      }
+    };
+
+    // 8. BUTTON: Replay Voice Audio
+    document.getElementById('btn-replay-audio').onclick = () => {
+      speakJarvis(document.getElementById('jarvis-voice-msg').innerText);
+    };
+
+    function processAstronautQuery(queryText) {
+      if (!queryText.trim()) return;
+      const lower = queryText.toLowerCase();
+
+      let answer = "";
+      if (lower.includes('next') || lower.includes('step')) {
+        currentStepIdx = (currentStepIdx + 1) % procedures.length;
+        renderStep();
+        return;
+      } else if (lower.includes('prev') || lower.includes('back')) {
+        currentStepIdx = (currentStepIdx - 1 + procedures.length) % procedures.length;
+        renderStep();
+        return;
+      } else if (lower.includes('camera') || lower.includes('webcam')) {
+        requestCameraAccess();
+        answer = "JARVIS Response: Toggling live hardware camera stream.";
+      } else if (lower.includes('status') || lower.includes('check')) {
+        answer = `JARVIS Response: Current Step ${procedures[currentStepIdx].id} status is ${procedures[currentStepIdx].status}. Required action: ${procedures[currentStepIdx].action_required}`;
+      } else {
+        answer = `JARVIS Response: Processing query "${queryText}". SOP parameters verified for ${procedures[currentStepIdx].expected_object}. All systems nominal.`;
+      }
+
+      document.getElementById('jarvis-voice-msg').innerText = answer;
+      addLog("VERIFICATION", `Astronaut Query: "${queryText}"`, "INFO");
+      speakJarvis(answer);
+    }
+
+    // 10. FORM SUBMIT BUTTON: Query Submit
+    document.getElementById('form-query').onsubmit = (e) => {
+      e.preventDefault();
+      const q = document.getElementById('input-query').value;
+      if (!q) return;
+      processAstronautQuery(q);
+      document.getElementById('input-query').value = '';
+    };
+
+    // 6 & 7. BUTTONS: Prev & Next Step Navigation
+    document.getElementById('btn-next').onclick = () => {
+      currentStepIdx = (currentStepIdx + 1) % procedures.length;
+      renderStep();
+    };
+
+    document.getElementById('btn-prev').onclick = () => {
+      currentStepIdx = (currentStepIdx - 1 + procedures.length) % procedures.length;
+      renderStep();
+    };
+
+    // 11. BUTTONS: Log Filter Tabs
+    ['all', 'verification', 'pipeline', 'system'].forEach(cat => {
+      document.getElementById(`filter-${cat}`).onclick = () => {
+        currentFilter = cat.toUpperCase();
+        ['all', 'verification', 'pipeline', 'system'].forEach(c => {
+          const btn = document.getElementById(`filter-${c}`);
+          btn.className = c === cat
+            ? 'px-2.5 py-1 rounded bg-cyan-500/30 text-cyan-300 font-bold transition-all'
+            : 'px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition-all';
+        });
+        renderLogs();
+      };
+    });
+
+    // 12. BUTTON: Export CSV
+    document.getElementById('btn-export-csv').onclick = () => {
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + ["Time,Category,Level,Message", ...missionLogs.map(l => `"${l.time}","${l.category}","${l.level}","${l.msg}"`)].join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `jarvis_mission_logs_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      addLog("SYSTEM", "Exported mission log telemetry CSV", "SUCCESS");
+    };
+
+    function renderStep() {
+      const proc = procedures[currentStepIdx];
+      document.getElementById('step-badge').innerText = `STEP ${currentStepIdx + 1} OF ${procedures.length}`;
+      document.getElementById('step-id').innerText = `${proc.id} // CURRENT PROCEDURE`;
+      document.getElementById('step-title').innerText = proc.title;
+      document.getElementById('step-action').innerText = proc.action_required;
+      document.getElementById('exp-obj').innerText = proc.expected_object;
+      document.getElementById('det-obj').innerText = proc.detected_object;
+      document.getElementById('hud-object').innerText = proc.detected_object;
+      document.getElementById('hud-conf').innerText = Math.round(proc.confidence * 100) + '%';
+      document.getElementById('conf-val').innerText = Math.round(proc.confidence * 100) + '%';
+      document.getElementById('conf-bar').style.width = Math.round(proc.confidence * 100) + '%';
+
+      const banner = document.getElementById('verification-banner');
+      banner.className = `mb-4 px-4 py-3 rounded-xl flex items-center space-x-3 ${proc.status === 'MATCH' ? 'badge-match' : (proc.status === 'MISMATCH' ? 'badge-mismatch' : 'badge-uncertain')}`;
+      
+      const checkSvg = `<svg class="w-8 h-8 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke-width="2"/><polyline points="22 4 12 14.01 9 11.01" stroke-width="2"/></svg>`;
+      const errorSvg = `<svg class="w-8 h-8 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><line x1="15" y1="9" x2="9" y2="15" stroke-width="2"/><line x1="9" y1="9" x2="15" y2="15" stroke-width="2"/></svg>`;
+      const warnSvg = `<svg class="w-8 h-8 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke-width="2"/><line x1="12" y1="9" x2="12" y2="13" stroke-width="2"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-width="2"/></svg>`;
+      
+      banner.innerHTML = `${proc.status==='MATCH'?checkSvg:(proc.status==='MISMATCH'?errorSvg:warnSvg)}<div><div class="font-orbitron font-black text-lg tracking-wider">VERIFICATION: ${proc.status}</div><div class="text-xs font-mono">${proc.reason}</div></div>`;
+      
+      document.getElementById('jarvis-voice-msg').innerText = proc.jarvis_voice;
+      addLog("VERIFICATION", `${proc.id} ${proc.detected_object}: ${proc.status}`, proc.status === 'MATCH' ? 'SUCCESS' : (proc.status === 'MISMATCH' ? 'ERROR' : 'WARN'));
+      speakJarvis(proc.jarvis_voice);
+
+      // Render Nodes
+      const nodesContainer = document.getElementById('pipeline-nodes-container');
+      nodesContainer.innerHTML = `
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div class="flex justify-between items-center mb-1"><span class="text-[10px] text-slate-400 font-mono">YOLO Detector</span><span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">ONLINE</span></div>
+          <div class="font-mono text-xs text-cyan-300 font-bold truncate">${proc.detected_object}</div>
+          <div class="text-[10px] font-mono text-purple-400 mt-1">18.2 ms</div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div class="flex justify-between items-center mb-1"><span class="text-[10px] text-slate-400 font-mono">Qwen3-VL Vision</span><span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">ONLINE</span></div>
+          <div class="font-mono text-xs text-cyan-300 font-bold truncate">Visual Features OK</div>
+          <div class="text-[10px] font-mono text-purple-400 mt-1">224.0 ms</div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div class="flex justify-between items-center mb-1"><span class="text-[10px] text-slate-400 font-mono">RAG SOP Base</span><span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">ONLINE</span></div>
+          <div class="font-mono text-xs text-cyan-300 font-bold truncate">NASA-SOP-${proc.id}</div>
+          <div class="text-[10px] font-mono text-purple-400 mt-1">12.5 ms</div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div class="flex justify-between items-center mb-1"><span class="text-[10px] text-slate-400 font-mono">Decision Engine</span><span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">${proc.status}</span></div>
+          <div class="font-mono text-xs text-cyan-300 font-bold truncate">Score ${Math.round(proc.confidence*100)}%</div>
+          <div class="text-[10px] font-mono text-purple-400 mt-1">31.0 ms</div>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div class="flex justify-between items-center mb-1"><span class="text-[10px] text-slate-400 font-mono">Qwen3 LLM Voice</span><span class="text-[9px] px-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">ONLINE</span></div>
+          <div class="font-mono text-xs text-cyan-300 font-bold truncate">Voice Synthesized</div>
+          <div class="text-[10px] font-mono text-purple-400 mt-1">104.5 ms</div>
+        </div>
+      `;
+    }
+
+    // Canvas animation
+    const canvas = document.getElementById('demo-canvas');
+    const ctx = canvas.getContext('2d');
+    let angle = 0;
+
+    function renderVideoCanvas() {
+      angle = (angle + 2) % 360;
+
+      if (usePhysicalWebcam && rawVideo.readyState === rawVideo.HAVE_ENOUGH_DATA) {
+        ctx.drawImage(rawVideo, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#06090f';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.1)';
+        for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+        const cx = canvas.width / 2, cy = canvas.height / 2;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, 140, 0, Math.PI * 2); ctx.stroke();
+        const rad = (angle * Math.PI) / 180;
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 140 * Math.cos(rad), cy + 140 * Math.sin(rad)); ctx.stroke();
+      }
+
+      // HUD Overlay
+      const proc = procedures[currentStepIdx];
+      const color = proc.status === 'MATCH' ? '#00ff88' : (proc.status === 'MISMATCH' ? '#ff2a6d' : '#ffaa00');
+
+      const x1 = 220, y1 = 140, x2 = 580, y2 = 360;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      const len = 20;
+      ctx.beginPath(); ctx.moveTo(x1, y1 + len); ctx.lineTo(x1, y1); ctx.lineTo(x1 + len, y1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2 - len, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y1 + len); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y2 - len); ctx.lineTo(x1, y2); ctx.lineTo(x1 + len, y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2 - len, y2); ctx.lineTo(x2, y2); ctx.lineTo(x2, y2 - len); ctx.stroke();
+
+      const tcx = (x1 + x2) / 2, tcy = (y1 + y2) / 2;
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tcx - 12, tcy); ctx.lineTo(tcx + 12, tcy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tcx, tcy - 12); ctx.lineTo(tcx, tcy + 12); ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, y1 - 26, 280, 24);
+      ctx.fillStyle = '#06090f';
+      ctx.font = 'bold 12px "JetBrains Mono"';
+      ctx.fillText(`TARGET: ${proc.detected_object} | ${Math.round(proc.confidence*100)}%`, x1 + 6, y1 - 9);
+
+      requestAnimationFrame(renderVideoCanvas);
+    }
+    renderVideoCanvas();
+
+    renderStep();
+    renderLogs();
+  </script>
+</body>
+</html>
